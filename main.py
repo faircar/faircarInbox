@@ -243,9 +243,14 @@ async def send_fb_message(recipient_id: str, text: str, token: str) -> bool:
         "recipient": {"id": recipient_id},
         "message": {"text": text}
     }
-    async with httpx.AsyncClient() as client:
-        r = await client.post(url, json=payload)
-        return r.status_code == 200
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(url, json=payload)
+            print(f"FB push status={r.status_code} body={r.text}")
+            return r.status_code == 200
+    except Exception as e:
+        print(f"FB push EXCEPTION: {e}")
+        return False
 
 # ─── SEND LINE MESSAGE ────────────────────────────────────────────────────────
 async def send_line_message(user_id: str, text: str, channel: str) -> bool:
@@ -256,10 +261,14 @@ async def send_line_message(user_id: str, text: str, channel: str) -> bool:
         "messages": [{"type": "text", "text": text}]
     }
     headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient() as client:
-        r = await client.post(url, json=payload, headers=headers)
-        print(f"LINE push [{channel}] status={r.status_code} body={r.text}")
-        return r.status_code == 200
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(url, json=payload, headers=headers)
+            print(f"LINE push [{channel}] status={r.status_code} body={r.text}")
+            return r.status_code == 200
+    except Exception as e:
+        print(f"LINE push [{channel}] EXCEPTION: {e}")
+        return False
 
 # ─── WEBHOOK: FACEBOOK VERIFY ────────────────────────────────────────────────
 @app.get("/webhook/facebook")
