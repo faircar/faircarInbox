@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: maew-inbox
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: FB_TOKEN_FAIRCAR
+        sync: false
+      - key: FB_TOKEN_ASAP
+        sync: false
+      - key: FB_APP_SECRET
+        sync: false
+      - key: FB_VERIFY_TOKEN
+        value: maew_inbox_2024
+      - key: FB_PAGE_ID_FAIRCAR
+        value: "100735478552467"
+      - key: FB_PAGE_ID_ASAP
+        value: "117865866278291"
+      - key: LINE_SECRET_ASAP
+        sync: false
+      - key: LINE_TOKEN_ASAP
+        sync: false
+      - key: LINE_SECRET_FAIRCAR
+        sync: false
+      - key: LINE_TOKEN_FAIRCAR
+        sync: false

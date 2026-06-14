@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maew Inbox</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
+
+  /* ─── TOP BAR ─── */
+  #topbar {
+    background: #1a1a2e; color: white; display: flex;
+    align-items: center; padding: 10px 16px; gap: 12px; flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  #topbar h1 { font-size: 18px; flex: 1; }
+  #pending-badge {
+    background: #e74c3c; color: white; border-radius: 20px;
+    padding: 3px 10px; font-size: 13px; font-weight: bold; display: none;
+  }
+  #overdue-badge {
+    background: #f39c12; color: white; border-radius: 20px;
+    padding: 3px 10px; font-size: 12px; display: none;
+  }
+  #admin-display { font-size: 13px; opacity: 0.8; }
+
+  /* ─── CHANNEL TABS ─── */
+  #channel-tabs {
+    background: white; display: flex; gap: 4px; padding: 8px 12px;
+    border-bottom: 2px solid #e0e0e0; flex-shrink: 0; overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  .tab-btn {
+    padding: 6px 14px; border-radius: 20px; border: 1.5px solid #ddd;
+    background: white; cursor: pointer; font-size: 13px; white-space: nowrap;
+    transition: all 0.2s; color: #555;
+  }
+  .tab-btn:hover { background: #f0f0f0; }
+  .tab-btn.active { background: #1a1a2e; color: white; border-color: #1a1a2e; }
+
+  /* ─── MAIN LAYOUT ─── */
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ─── CONVERSATION LIST ─── */
+  #conv-list {
+    width: 340px; min-width: 280px; background: white;
+    border-right: 1px solid #e0e0e0; overflow-y: auto; flex-shrink: 0;
+  }
+  .conv-item {
+    display: flex; align-items: flex-start; padding: 12px 14px;
+    border-bottom: 1px solid #f0f0f0; cursor: pointer; gap: 10px;
+    transition: background 0.15s;
+  }
+  .conv-item:hover { background: #f9f9f9; }
+  .conv-item.active { background: #eef2ff; }
+  .conv-item.pending { border-left: 3px solid #e74c3c; }
+  .conv-item.answered { border-left: 3px solid #27ae60; }
+  .conv-avatar {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: #ddd; display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .conv-info { flex: 1; overflow: hidden; }
+  .conv-name { font-weight: 600; font-size: 14px; color: #222; }
+  .conv-preview { font-size: 12px; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .conv-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+  .conv-time { font-size: 11px; color: #aaa; }
+  .platform-badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 10px;
+    color: white; font-weight: 600;
+  }
+  .pb-facebook_faircar, .pb-facebook_asap { background: #1877f2; }
+  .pb-line_asap, .pb-line_faircar { background: #06c755; }
+  .pb-instagram_faircar { background: linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); }
+  .timer-badge {
+    font-size: 11px; background: #fff3cd; color: #856404;
+    border-radius: 10px; padding: 1px 7px; border: 1px solid #ffc107;
+  }
+  .timer-badge.overdue { background: #fde; color: #c0392b; border-color: #e74c3c; }
+
+  /* ─── CHAT AREA ─── */
+  #chat-area {
+    flex: 1; display: flex; flex-direction: column; background: #f0f2f5;
+    overflow: hidden;
+  }
+  #chat-header {
+    background: white; padding: 12px 16px;
+    border-bottom: 1px solid #e0e0e0; flex-shrink: 0;
+    display: flex; align-items: center; gap: 10px;
+  }
+  #chat-header-name { font-weight: 700; font-size: 16px; }
+  #chat-header-sub { font-size: 12px; color: #888; }
+  #chat-header-admin { margin-left: auto; font-size: 12px; color: #555; }
+  #messages {
+    flex: 1; overflow-y: auto; padding: 16px; display: flex;
+    flex-direction: column; gap: 8px;
+  }
+  .msg-row { display: flex; }
+  .msg-row.incoming { justify-content: flex-start; }
+  .msg-row.outgoing { justify-content: flex-end; }
+  .msg-bubble {
+    max-width: 65%; padding: 10px 14px; border-radius: 18px;
+    font-size: 14px; line-height: 1.5;
+  }
+  .msg-row.incoming .msg-bubble { background: white; color: #222; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .msg-row.outgoing .msg-bubble { background: #1a1a2e; color: white; border-bottom-right-radius: 4px; }
+  .msg-meta { font-size: 11px; color: #aaa; margin-top: 3px; text-align: right; }
+  .msg-admin { font-size: 11px; color: #7cb9e8; margin-top: 2px; }
+
+  /* ─── REPLY BOX ─── */
+  #reply-box {
+    background: white; border-top: 1px solid #e0e0e0;
+    padding: 12px 16px; flex-shrink: 0;
+  }
+  #reply-box textarea {
+    width: 100%; height: 70px; border: 1px solid #ddd;
+    border-radius: 10px; padding: 10px 12px; font-size: 14px;
+    resize: none; font-family: inherit; outline: none;
+  }
+  #reply-box textarea:focus { border-color: #1a1a2e; }
+  #reply-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  #btn-send {
+    background: #1a1a2e; color: white; border: none;
+    padding: 9px 22px; border-radius: 8px; cursor: pointer;
+    font-size: 14px; font-weight: 600;
+  }
+  #btn-send:hover { background: #2d2d5e; }
+  #btn-send:disabled { background: #aaa; cursor: not-allowed; }
+  #status-select {
+    border: 1px solid #ddd; padding: 7px 10px; border-radius: 8px;
+    font-size: 13px; cursor: pointer; background: white;
+  }
+
+  /* ─── EMPTY STATE ─── */
+  #empty-state {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; color: #bbb; font-size: 16px; gap: 8px;
+  }
+  #empty-state .icon { font-size: 48px; }
+
+  /* ─── LOGIN ─── */
+  #login-screen {
+    position: fixed; inset: 0; background: #1a1a2e;
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+  }
+  #login-box {
+    background: white; padding: 36px 40px; border-radius: 16px;
+    width: 340px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  }
+  #login-box h2 { margin-bottom: 6px; color: #1a1a2e; }
+  #login-box p { color: #888; font-size: 13px; margin-bottom: 20px; }
+  #login-box input {
+    width: 100%; padding: 10px 12px; border: 1.5px solid #ddd;
+    border-radius: 8px; font-size: 14px; margin-bottom: 12px; outline: none;
+  }
+  #login-box input:focus { border-color: #1a1a2e; }
+  #btn-login {
+    width: 100%; background: #1a1a2e; color: white; border: none;
+    padding: 11px; border-radius: 8px; font-size: 15px;
+    font-weight: 600; cursor: pointer;
+  }
+  #btn-login:hover { background: #2d2d5e; }
+
+  /* ─── PENDING ALERT BAR ─── */
+  #overdue-bar {
+    background: #fff3cd; border-bottom: 1px solid #ffc107;
+    padding: 6px 16px; font-size: 13px; color: #856404; display: none; flex-shrink: 0;
+  }
+
+  /* ─── EMPTY CONV LIST ─── */
+  #no-conv { text-align: center; padding: 40px 20px; color: #bbb; font-size: 14px; }
+
+  @media (max-width: 640px) {
+    #conv-list { width: 100%; position: absolute; z-index: 10; height: 100%; }
+    #conv-list.hidden { display: none; }
+    #chat-area.hidden { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div id="login-box">
+    <h2>🐱 Maew Inbox</h2>
+    <p>ระบบรวมข้อความรถเช่า</p>
+    <input type="text" id="admin-name-input" placeholder="ชื่อแอดมิน เช่น แมว, นุ่น" maxlength="30">
+    <button id="btn-login" onclick="doLogin()">เข้าสู่ระบบ</button>
+  </div>
+</div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>🐱 Maew Inbox</h1>
+  <span id="overdue-badge">⏰ ค้าง</span>
+  <span id="pending-badge">● รอตอบ</span>
+  <span id="admin-display"></span>
+</div>
+
+<!-- OVERDUE ALERT BAR -->
+<div id="overdue-bar">⚠️ มีแชทที่ยังไม่ตอบเกิน 30 นาที กรุณาตรวจสอบ</div>
+
+<!-- CHANNEL TABS -->
+<div id="channel-tabs">
+  <button class="tab-btn active" onclick="setChannel('all', this)">📬 ทั้งหมด</button>
+  <button class="tab-btn" onclick="setChannel('facebook_faircar', this)">💙 FB Faircar</button>
+  <button class="tab-btn" onclick="setChannel('facebook_asap', this)">💙 FB Asap</button>
+  <button class="tab-btn" onclick="setChannel('line_asap', this)">💚 LINE Asap</button>
+  <button class="tab-btn" onclick="setChannel('line_faircar', this)">💚 LINE Faircar</button>
+  <button class="tab-btn" onclick="setChannel('instagram_faircar', this)">💜 IG Faircar</button>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="conv-list">
+    <div id="no-conv">ยังไม่มีการสนทนา</div>
+  </div>
+
+  <div id="chat-area">
+    <div id="empty-state">
+      <div class="icon">💬</div>
+      <div>เลือกการสนทนาทางซ้าย</div>
+    </div>
+    <div id="chat-wrapper" style="display:none; flex-direction:column; flex:1; overflow:hidden;">
+      <div id="chat-header">
+        <div>
+          <div id="chat-header-name">ชื่อลูกค้า</div>
+          <div id="chat-header-sub">platform</div>
+        </div>
+        <div id="chat-header-admin"></div>
+      </div>
+      <div id="messages"></div>
+      <div id="reply-box">
+        <textarea id="reply-text" placeholder="พิมพ์ข้อความ... (Enter เพื่อส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"></textarea>
+        <div id="reply-actions">
+          <button id="btn-send" onclick="sendReply()">ส่ง ✈️</button>
+          <select id="status-select" onchange="changeStatus(this.value)">
+            <option value="pending">🔴 รอตอบ</option>
+            <option value="answered">🟢 ตอบแล้ว</option>
+          </select>
+          <span id="reply-status" style="font-size:12px; color:#888;"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let adminName = '';
+let currentChannel = 'all';
+let currentConvId = null;
+let pollInterval = null;
+let statsInterval = null;
+let convData = [];
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+function doLogin() {
+  const name = document.getElementById('admin-name-input').value.trim();
+  if (!name) { alert('กรุณาใส่ชื่อก่อนน้า'); return; }
+  adminName = name;
+  localStorage.setItem('admin_name', name);
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('admin-display').textContent = '👤 ' + name;
+  startApp();
+}
+
+// Check saved login
+window.onload = function() {
+  const saved = localStorage.getItem('admin_name');
+  if (saved) {
+    adminName = saved;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('admin-display').textContent = '👤 ' + saved;
+    startApp();
+  }
+  // Enter key for login
+  document.getElementById('admin-name-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+};
+
+// ─── START APP ────────────────────────────────────────────────────────────────
+function startApp() {
+  loadConversations();
+  pollInterval = setInterval(loadConversations, 5000);
+  statsInterval = setInterval(loadStats, 10000);
+  loadStats();
+
+  document.getElementById('reply-text').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
+  });
+}
+
+// ─── CHANNEL FILTER ───────────────────────────────────────────────────────────
+function setChannel(ch, btn) {
+  currentChannel = ch;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadConversations();
+}
+
+// ─── LOAD CONVERSATIONS ───────────────────────────────────────────────────────
+async function loadConversations() {
+  try {
+    const r = await fetch(`/api/conversations?platform=${currentChannel}`);
+    convData = await r.json();
+    renderConvList();
+  } catch(e) {}
+}
+
+function renderConvList() {
+  const el = document.getElementById('conv-list');
+  if (convData.length === 0) {
+    el.innerHTML = '<div id="no-conv">ยังไม่มีการสนทนา</div>';
+    return;
+  }
+  el.innerHTML = convData.map(c => {
+    const isActive = c.id === currentConvId ? 'active' : '';
+    const statusClass = c.status === 'pending' ? 'pending' : 'answered';
+    const timeStr = formatTime(c.last_message_time);
+    const platformLabel = getPlatformLabel(c.platform);
+    const platformClass = 'pb-' + c.platform;
+    const timer = c.status === 'pending' ? getTimerBadge(c.unanswered_since) : '';
+    const emoji = getAvatarEmoji(c.platform);
+
+    return `<div class="conv-item ${isActive} ${statusClass}" onclick="openConv(${c.id}, '${c.name.replace(/'/g,"\\'")}', '${c.platform}', '${c.assigned_admin || ''}', '${c.status}')">
+      <div class="conv-avatar">${emoji}</div>
+      <div class="conv-info">
+        <div class="conv-name">${escHtml(c.name)}</div>
+        <div class="conv-preview">${escHtml(c.last_message || '')}</div>
+        <div class="conv-meta">
+          <span class="conv-time">${timeStr}</span>
+          <span class="platform-badge ${platformClass}">${platformLabel}</span>
+        </div>
+        ${timer ? `<div style="margin-top:3px">${timer}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function getAvatarEmoji(platform) {
+  if (platform.includes('facebook')) return '👤';
+  if (platform.includes('line')) return '🟢';
+  if (platform.includes('instagram')) return '📸';
+  return '👤';
+}
+
+function getPlatformLabel(p) {
+  const m = { facebook_faircar:'FB Faircar', facebook_asap:'FB Asap', line_asap:'LINE Asap', line_faircar:'LINE Faircar', instagram_faircar:'IG Faircar' };
+  return m[p] || p;
+}
+
+function getTimerBadge(since) {
+  if (!since) return '';
+  const diff = Date.now() - new Date(since + ' UTC').getTime();
+  const mins = Math.floor(diff / 60000);
+  const isOverdue = mins >= 30;
+  const label = mins < 60 ? `${mins} นาที` : `${Math.floor(mins/60)} ชม. ${mins%60} นาที`;
+  return `<span class="timer-badge ${isOverdue ? 'overdue' : ''}">⏱ ${label}</span>`;
+}
+
+// ─── OPEN CONVERSATION ────────────────────────────────────────────────────────
+async function openConv(convId, name, platform, admin, status) {
+  currentConvId = convId;
+  renderConvList();
+
+  document.getElementById('empty-state').style.display = 'none';
+  const wrapper = document.getElementById('chat-wrapper');
+  wrapper.style.display = 'flex';
+
+  document.getElementById('chat-header-name').textContent = name;
+  document.getElementById('chat-header-sub').textContent = getPlatformLabel(platform);
+  document.getElementById('chat-header-admin').textContent = admin ? `👤 ${admin} ตอบล่าสุด` : '';
+
+  const sel = document.getElementById('status-select');
+  sel.value = status;
+
+  await loadMessages(convId);
+}
+
+async function loadMessages(convId) {
+  try {
+    const r = await fetch(`/api/conversations/${convId}/messages`);
+    const msgs = await r.json();
+    renderMessages(msgs);
+  } catch(e) {}
+}
+
+function renderMessages(msgs) {
+  const el = document.getElementById('messages');
+  if (msgs.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:#bbb;padding:20px">ยังไม่มีข้อความ</div>';
+    return;
+  }
+  el.innerHTML = msgs.map(m => {
+    const dir = m.direction;
+    const adminLabel = dir === 'outgoing' && m.admin_name ? `<div class="msg-admin">✉️ ${m.admin_name}</div>` : '';
+    return `<div class="msg-row ${dir}">
+      <div>
+        <div class="msg-bubble">${escHtml(m.content || '')}</div>
+        ${adminLabel}
+        <div class="msg-meta">${formatTime(m.timestamp)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+// ─── SEND REPLY ───────────────────────────────────────────────────────────────
+async function sendReply() {
+  if (!currentConvId) return;
+  const text = document.getElementById('reply-text').value.trim();
+  if (!text) return;
+
+  const btn = document.getElementById('btn-send');
+  const statusEl = document.getElementById('reply-status');
+  btn.disabled = true;
+  statusEl.textContent = 'กำลังส่ง...';
+
+  try {
+    const r = await fetch(`/api/conversations/${currentConvId}/reply`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ admin_name: adminName, content: text })
+    });
+    if (r.ok) {
+      document.getElementById('reply-text').value = '';
+      statusEl.textContent = '✅ ส่งแล้ว';
+      document.getElementById('status-select').value = 'answered';
+      await loadMessages(currentConvId);
+      await loadConversations();
+      setTimeout(() => statusEl.textContent = '', 2000);
+    } else {
+      const err = await r.json();
+      statusEl.textContent = '❌ ' + (err.detail || 'ส่งไม่สำเร็จ');
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ ไม่สามารถเชื่อมต่อได้';
+  }
+  btn.disabled = false;
+}
+
+// ─── CHANGE STATUS ────────────────────────────────────────────────────────────
+async function changeStatus(status) {
+  if (!currentConvId) return;
+  await fetch(`/api/conversations/${currentConvId}/status`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ status })
+  });
+  await loadConversations();
+}
+
+// ─── LOAD STATS ───────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const r = await fetch('/api/stats');
+    const s = await r.json();
+
+    const pb = document.getElementById('pending-badge');
+    const ob = document.getElementById('overdue-badge');
+    const bar = document.getElementById('overdue-bar');
+
+    if (s.pending > 0) {
+      pb.textContent = `● ${s.pending} รอตอบ`;
+      pb.style.display = 'inline';
+    } else {
+      pb.style.display = 'none';
+    }
+
+    if (s.overdue > 0) {
+      ob.textContent = `⏰ ค้าง ${s.overdue}`;
+      ob.style.display = 'inline';
+      bar.style.display = 'block';
+    } else {
+      ob.style.display = 'none';
+      bar.style.display = 'none';
+    }
+  } catch(e) {}
+}
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+function formatTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts.replace(' ', 'T'));
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) return d.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+  return d.toLocaleDateString('th-TH', {day:'2-digit', month:'short'});
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
