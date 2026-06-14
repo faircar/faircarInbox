@@ -258,6 +258,7 @@ async def send_line_message(user_id: str, text: str, channel: str) -> bool:
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient() as client:
         r = await client.post(url, json=payload, headers=headers)
+        print(f"LINE push [{channel}] status={r.status_code} body={r.text}")
         return r.status_code == 200
 
 # ─── WEBHOOK: FACEBOOK VERIFY ────────────────────────────────────────────────
