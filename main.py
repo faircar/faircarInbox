@@ -3,13 +3,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import httpx
 import json
 import hmac
 import hashlib
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import os
 
 # ─── CONFIG (จาก environment variables) ───────────────────────────────────────
@@ -25,29 +26,30 @@ LINE_TOKEN_ASAP     = os.getenv("LINE_TOKEN_ASAP", "")
 LINE_SECRET_FAIRCAR = os.getenv("LINE_SECRET_FAIRCAR", "")
 LINE_TOKEN_FAIRCAR  = os.getenv("LINE_TOKEN_FAIRCAR", "")
 
-DB_PATH = "inbox.db"
+DATABASE_URL        = os.getenv("DATABASE_URL", "")
 
 # ─── DATABASE ─────────────────────────────────────────────────────────────────
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
     return conn
 
 def init_db():
     conn = get_db()
     c = conn.cursor()
-    c.executescript("""
+    c.execute("""
         CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             platform TEXT NOT NULL,
             platform_user_id TEXT NOT NULL,
             name TEXT DEFAULT 'ไม่ทราบชื่อ',
             avatar_url TEXT,
             phone TEXT,
             UNIQUE(platform, platform_user_id)
-        );
+        )
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS conversations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             contact_id INTEGER NOT NULL,
             platform TEXT NOT NULL,
             last_message TEXT,
@@ -56,9 +58,11 @@ def init_db():
             assigned_admin TEXT,
             unanswered_since TEXT,
             FOREIGN KEY(contact_id) REFERENCES contacts(id)
-        );
+        )
+    """)
+    c.execute("""
         CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             conversation_id INTEGER NOT NULL,
             direction TEXT NOT NULL,
             content TEXT,
@@ -66,7 +70,7 @@ def init_db():
             admin_name TEXT,
             timestamp TEXT NOT NULL,
             FOREIGN KEY(conversation_id) REFERENCES conversations(id)
-        );
+        )
     """)
     conn.commit()
     conn.close()
@@ -81,13 +85,13 @@ def upsert_contact(platform: str, uid: str, name: str = None, avatar: str = None
     conn = get_db()
     c = conn.cursor()
     c.execute(
-        "INSERT OR IGNORE INTO contacts (platform, platform_user_id, name, avatar_url) VALUES (?,?,?,?)",
+        "INSERT INTO contacts (platform, platform_user_id, name, avatar_url) VALUES (%s,%s,%s,%s) ON CONFLICT (platform, platform_user_id) DO NOTHING",
         (platform, uid, name or "ไม่ทราบชื่อ", avatar)
     )
     if name:
-        c.execute("UPDATE contacts SET name=? WHERE platform=? AND platform_user_id=?", (name, platform, uid))
+        c.execute("UPDATE contacts SET name=%s WHERE platform=%s AND platform_user_id=%s", (name, platform, uid))
     conn.commit()
-    c.execute("SELECT id FROM contacts WHERE platform=? AND platform_user_id=?", (platform, uid))
+    c.execute("SELECT id FROM contacts WHERE platform=%s AND platform_user_id=%s", (platform, uid))
     row = c.fetchone()
     conn.close()
     return row["id"]
@@ -95,21 +99,21 @@ def upsert_contact(platform: str, uid: str, name: str = None, avatar: str = None
 def upsert_conversation(contact_id: int, platform: str, last_msg: str) -> int:
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT id FROM conversations WHERE contact_id=? AND platform=?", (contact_id, platform))
+    c.execute("SELECT id FROM conversations WHERE contact_id=%s AND platform=%s", (contact_id, platform))
     row = c.fetchone()
     ts = now_str()
     if row:
         conv_id = row["id"]
         c.execute(
-            "UPDATE conversations SET last_message=?, last_message_time=?, status='pending', unanswered_since=? WHERE id=?",
+            "UPDATE conversations SET last_message=%s, last_message_time=%s, status='pending', unanswered_since=%s WHERE id=%s",
             (last_msg, ts, ts, conv_id)
         )
     else:
         c.execute(
-            "INSERT INTO conversations (contact_id, platform, last_message, last_message_time, unanswered_since) VALUES (?,?,?,?,?)",
+            "INSERT INTO conversations (contact_id, platform, last_message, last_message_time, unanswered_since) VALUES (%s,%s,%s,%s,%s) RETURNING id",
             (contact_id, platform, last_msg, ts, ts)
         )
-        conv_id = c.lastrowid
+        conv_id = c.fetchone()["id"]
     conn.commit()
     conn.close()
     return conv_id
@@ -118,7 +122,7 @@ def save_message(conv_id: int, direction: str, content: str, msg_type: str = "te
     conn = get_db()
     c = conn.cursor()
     c.execute(
-        "INSERT INTO messages (conversation_id, direction, content, message_type, admin_name, timestamp) VALUES (?,?,?,?,?,?)",
+        "INSERT INTO messages (conversation_id, direction, content, message_type, admin_name, timestamp) VALUES (%s,%s,%s,%s,%s,%s)",
         (conv_id, direction, content, msg_type, admin, now_str())
     )
     conn.commit()
@@ -170,7 +174,7 @@ async def get_conversations(platform: str = "all"):
                    ct.name, ct.avatar_url, ct.phone
             FROM conversations cv
             JOIN contacts ct ON ct.id = cv.contact_id
-            WHERE cv.platform = ?
+            WHERE cv.platform = %s
             ORDER BY cv.last_message_time DESC
         """, (platform,))
     rows = [dict(r) for r in c.fetchall()]
@@ -182,7 +186,7 @@ async def get_conversations(platform: str = "all"):
 async def get_messages(conv_id: int):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM messages WHERE conversation_id=? ORDER BY timestamp ASC", (conv_id,))
+    c.execute("SELECT * FROM messages WHERE conversation_id=%s ORDER BY timestamp ASC", (conv_id,))
     rows = [dict(r) for r in c.fetchall()]
     conn.close()
     return rows
@@ -201,7 +205,7 @@ async def send_reply(conv_id: int, body: ReplyBody):
         SELECT cv.platform, ct.platform_user_id
         FROM conversations cv
         JOIN contacts ct ON ct.id = cv.contact_id
-        WHERE cv.id = ?
+        WHERE cv.id = %s
     """, (conv_id,))
     row = c.fetchone()
     conn.close()
@@ -210,6 +214,7 @@ async def send_reply(conv_id: int, body: ReplyBody):
 
     platform = row["platform"]
     uid = row["platform_user_id"]
+    print(f"REPLY: conv={conv_id} platform={platform} uid={uid} content={body.content[:30]}")
 
     # ส่งข้อความจริง
     success = False
@@ -223,11 +228,10 @@ async def send_reply(conv_id: int, body: ReplyBody):
 
     if success:
         save_message(conv_id, "outgoing", body.content, body.message_type, body.admin_name)
-        # อัพเดต status เป็น answered
         conn = get_db()
         c = conn.cursor()
         c.execute(
-            "UPDATE conversations SET status='answered', assigned_admin=?, unanswered_since=NULL WHERE id=?",
+            "UPDATE conversations SET status='answered', assigned_admin=%s, unanswered_since=NULL WHERE id=%s",
             (body.admin_name, conv_id)
         )
         conn.commit()
@@ -295,7 +299,6 @@ async def fb_receive(request: Request):
             if not text and not attachments:
                 continue
 
-            # ดึงชื่อผู้ส่ง
             name = await get_fb_user_name(sender_id, get_fb_token(page_id))
             platform = f"facebook_{platform_suffix}"
             contact_id = upsert_contact(platform, sender_id, name)
@@ -308,7 +311,7 @@ async def fb_receive(request: Request):
 async def get_fb_user_name(user_id: str, token: str) -> str:
     try:
         url = f"https://graph.facebook.com/{user_id}?fields=name&access_token={token}"
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(url)
             if r.status_code == 200:
                 return r.json().get("name", "ไม่ทราบชื่อ")
@@ -326,7 +329,6 @@ async def line_receive(channel: str, request: Request):
     body_bytes = await request.body()
     sig = request.headers.get("x-line-signature", "")
 
-    # ตรวจสอบ signature
     hash_ = hmac.new(secret.encode(), body_bytes, hashlib.sha256).digest()
     import base64
     expected = base64.b64encode(hash_).decode()
@@ -343,7 +345,6 @@ async def line_receive(channel: str, request: Request):
         user_id = event.get("source", {}).get("userId", "")
         text = msg.get("text", "") if msg.get("type") == "text" else "[รูปภาพ/ไฟล์แนบ]"
 
-        # ดึงชื่อผู้ส่ง
         token = LINE_TOKEN_ASAP if channel == "asap" else LINE_TOKEN_FAIRCAR
         name = await get_line_user_name(user_id, token)
         contact_id = upsert_contact(platform, user_id, name)
@@ -356,7 +357,7 @@ async def get_line_user_name(user_id: str, token: str) -> str:
     try:
         url = f"https://api.line.me/v2/bot/profile/{user_id}"
         headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(url, headers=headers)
             if r.status_code == 200:
                 return r.json().get("displayName", "ไม่ทราบชื่อ")
@@ -364,19 +365,20 @@ async def get_line_user_name(user_id: str, token: str) -> str:
         pass
     return "ไม่ทราบชื่อ"
 
-# ─── API: STATS (สำหรับ notification badge) ──────────────────────────────────
+# ─── API: STATS ───────────────────────────────────────────────────────────────
 @app.get("/api/stats")
 async def get_stats():
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT COUNT(*) as cnt FROM conversations WHERE status='pending'")
     pending = c.fetchone()["cnt"]
-    # ค้างตอบเกิน 30 นาที
+    threshold = (datetime.now() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
     c.execute("""
         SELECT COUNT(*) as cnt FROM conversations
         WHERE status='pending'
-        AND unanswered_since < datetime('now', '-30 minutes', 'localtime')
-    """)
+        AND unanswered_since IS NOT NULL
+        AND unanswered_since < %s
+    """, (threshold,))
     overdue = c.fetchone()["cnt"]
     conn.close()
     return {"pending": pending, "overdue": overdue}
@@ -388,7 +390,7 @@ async def update_status(conv_id: int, request: Request):
     status = body.get("status", "pending")
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE conversations SET status=? WHERE id=?", (status, conv_id))
+    c.execute("UPDATE conversations SET status=%s WHERE id=%s", (status, conv_id))
     conn.commit()
     conn.close()
     return {"ok": True}

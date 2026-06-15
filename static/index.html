@@ -409,9 +409,10 @@ function renderMessages(msgs) {
 
 // ─── SEND REPLY ───────────────────────────────────────────────────────────────
 async function sendReply() {
-  if (!currentConvId) return;
+  console.log('sendReply called, convId=', currentConvId, 'admin=', adminName);
+  if (!currentConvId) { console.warn('no currentConvId'); return; }
   const text = document.getElementById('reply-text').value.trim();
-  if (!text) return;
+  if (!text) { console.warn('empty text'); return; }
 
   const btn = document.getElementById('btn-send');
   const statusEl = document.getElementById('reply-status');
@@ -419,11 +420,13 @@ async function sendReply() {
   statusEl.textContent = 'กำลังส่ง...';
 
   try {
+    console.log('fetching POST /api/conversations/' + currentConvId + '/reply');
     const r = await fetch(`/api/conversations/${currentConvId}/reply`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ admin_name: adminName, content: text })
     });
+    console.log('response status:', r.status);
     if (r.ok) {
       document.getElementById('reply-text').value = '';
       statusEl.textContent = '✅ ส่งแล้ว';
@@ -433,9 +436,11 @@ async function sendReply() {
       setTimeout(() => statusEl.textContent = '', 2000);
     } else {
       const err = await r.json();
+      console.error('reply error:', err);
       statusEl.textContent = '❌ ' + (err.detail || 'ส่งไม่สำเร็จ');
     }
   } catch(e) {
+    console.error('sendReply exception:', e);
     statusEl.textContent = '❌ ไม่สามารถเชื่อมต่อได้';
   }
   btn.disabled = false;
