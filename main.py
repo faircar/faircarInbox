@@ -21,10 +21,10 @@ FB_VERIFY_TOKEN     = os.getenv("FB_VERIFY_TOKEN", "maew_inbox_2024")
 FB_PAGE_ID_FAIRCAR  = os.getenv("FB_PAGE_ID_FAIRCAR", "100735478552467")
 FB_PAGE_ID_ASAP     = os.getenv("FB_PAGE_ID_ASAP", "117865866278291")
 
-LINE_SECRET_ASAP    = os.getenv("LINE_SECRET_ASAP", "")
-LINE_TOKEN_ASAP     = os.getenv("LINE_TOKEN_ASAP", "")
-LINE_SECRET_FAIRCAR = os.getenv("LINE_SECRET_FAIRCAR", "")
-LINE_TOKEN_FAIRCAR  = os.getenv("LINE_TOKEN_FAIRCAR", "")
+LINE_SECRET_ASAP    = os.getenv("LINE_SECRET_ASAP", "").strip()
+LINE_TOKEN_ASAP     = os.getenv("LINE_TOKEN_ASAP", "").strip()
+LINE_SECRET_FAIRCAR = os.getenv("LINE_SECRET_FAIRCAR", "").strip()
+LINE_TOKEN_FAIRCAR  = os.getenv("LINE_TOKEN_FAIRCAR", "").strip()
 
 DATABASE_URL        = os.getenv("DATABASE_URL", "")
 
