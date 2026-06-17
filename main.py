@@ -172,6 +172,10 @@ async def startup_event():
 async def root():
     return FileResponse("static/index.html")
 
+@app.get("/privacy")
+async def privacy():
+    return FileResponse("static/privacy.html")
+
 # ─── API: GET CONVERSATIONS ───────────────────────────────────────────────────
 @app.get("/api/conversations")
 async def get_conversations(platform: str = "all"):
