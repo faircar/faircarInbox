@@ -10,6 +10,7 @@ import json
 import hmac
 import hashlib
 import time
+import asyncio
 from datetime import datetime, timezone, timedelta
 import os
 
@@ -148,6 +149,24 @@ def platform_label(platform: str) -> str:
 # ─── FASTAPI ──────────────────────────────────────────────────────────────────
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# ─── KEEP ALIVE (ป้องกัน Render sleep) ───────────────────────────────────────
+APP_URL = os.getenv("APP_URL", "https://faircarinbox.onrender.com")
+
+async def keep_alive():
+    await asyncio.sleep(60)  # รอ 1 นาทีหลัง startup
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.get(f"{APP_URL}/api/stats")
+            print("keep-alive ping OK")
+        except Exception as e:
+            print(f"keep-alive error: {e}")
+        await asyncio.sleep(14 * 60)  # ping ทุก 14 นาที
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(keep_alive())
 
 @app.get("/")
 async def root():
