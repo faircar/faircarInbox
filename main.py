@@ -89,8 +89,8 @@ def upsert_contact(platform: str, uid: str, name: str = None, avatar: str = None
         "INSERT INTO contacts (platform, platform_user_id, name, avatar_url) VALUES (%s,%s,%s,%s) ON CONFLICT (platform, platform_user_id) DO NOTHING",
         (platform, uid, name or "ไม่ทราบชื่อ", avatar)
     )
-    if name:
-        c.execute("UPDATE contacts SET name=%s WHERE platform=%s AND platform_user_id=%s", (name, platform, uid))
+    if name:  # update เฉพาะเมื่อ name ไม่ใช่ None (ไม่ทับด้วย "ไม่ทราบชื่อ")
+        c.execute("UPDATE contacts SET name=%s WHERE platform=%s AND platform_user_id=%s AND name='ไม่ทราบชื่อ'", (name, platform, uid))
     conn.commit()
     c.execute("SELECT id FROM contacts WHERE platform=%s AND platform_user_id=%s", (platform, uid))
     row = c.fetchone()
@@ -378,11 +378,14 @@ async def get_line_user_name(user_id: str, token: str) -> str:
         headers = {"Authorization": f"Bearer {token}"}
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(url, headers=headers)
+            print(f"LINE profile [{user_id}] status={r.status_code} body={r.text[:100]}")
             if r.status_code == 200:
-                return r.json().get("displayName", "ไม่ทราบชื่อ")
-    except:
-        pass
-    return "ไม่ทราบชื่อ"
+                name = r.json().get("displayName", "")
+                if name:
+                    return name
+    except Exception as e:
+        print(f"LINE profile EXCEPTION: {e}")
+    return None  # คืน None แทน "ไม่ทราบชื่อ" เพื่อไม่ให้ทับชื่อเดิม
 
 # ─── API: STATS ───────────────────────────────────────────────────────────────
 @app.get("/api/stats")
