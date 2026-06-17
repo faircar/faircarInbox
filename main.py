@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, PlainTextResponse
 from pydantic import BaseModel
 from typing import Optional
 import psycopg2
@@ -279,7 +279,7 @@ async def send_line_message(user_id: str, text: str, channel: str) -> bool:
 async def fb_verify(request: Request):
     params = dict(request.query_params)
     if params.get("hub.verify_token") == FB_VERIFY_TOKEN:
-        return int(params.get("hub.challenge", 0))
+        return PlainTextResponse(params.get("hub.challenge", ""))
     raise HTTPException(status_code=403, detail="Verify token ไม่ถูกต้อง")
 
 # ─── WEBHOOK: FACEBOOK RECEIVE ───────────────────────────────────────────────
